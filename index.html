@@ -312,6 +312,7 @@
             font-size: 12px;
         }
         
+        /* New styles for light-level display */
         .light-level {
             height: 30px;
             background: linear-gradient(to right, #3498db, #f1c40f, #e67e22);
@@ -338,6 +339,7 @@
             color: #7f8c8d;
         }
         
+        /* Tab navigation for charts */
         .tabs {
             display: flex;
             margin-bottom: 15px;
@@ -362,18 +364,6 @@
         
         .chart-tabs.active {
             display: block;
-        }
-
-        .chart-info {
-            margin-bottom: 10px;
-            font-size: 12px;
-            color: #7f8c8d;
-            text-align: center;
-        }
-        
-        .next-update {
-            font-weight: bold;
-            color: #2c3e50;
         }
     </style>
 </head>
@@ -500,9 +490,6 @@
             </div>
             <div class="card full-width">
                 <h2>History Charts</h2>
-                <div class="chart-info">
-                    Charts update every 15 minutes | Next update: <span class="next-update" id="next-update">calculating...</span>
-                </div>
                 <div class="tabs">
                     <div class="tab active" data-tab="power-chart">Power</div>
                     <div class="tab" data-tab="light-chart">Light</div>
@@ -530,7 +517,7 @@
         </div>
         
         <footer>
-            <p>ESP32 Solar Tracker Dashboard - v1.2 (Modified for 15-min chart updates)</p>
+            <p>ESP32 Solar Tracker Dashboard - v1.2</p>
         </footer>
     </div>
 
@@ -550,10 +537,6 @@
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
         const solarTrackerRef = database.ref('solar_tracker');
-        
-        // MODIFIKASI 1: Tambahkan variabel untuk tracking waktu update grafik
-        let lastChartUpdate = 0;
-        const CHART_UPDATE_INTERVAL = 15 * 60 * 1000; // 15 menit dalam milliseconds
         
         // DOM elements
         const connectionDot = document.getElementById('connection-dot');
@@ -579,7 +562,6 @@
         const ina2Current = document.getElementById('ina2-current');
         const ina1Power = document.getElementById('ina1-power');
         const ina2Power = document.getElementById('ina2-power');
-        const nextUpdateElement = document.getElementById('next-update');
         
         // Chart initialization
         const powerCtx = document.getElementById('powerChart').getContext('2d');
@@ -742,10 +724,9 @@
             }
         });
         
-        // MODIFIKASI 2: Modifikasi fungsi addDataPoint untuk menyimpan lebih banyak data (15 menit x 20 = 5 jam data)
+        // Update chart with new data point
         function addDataPoint(chart, label, data, datasetIndex = 0) {
-            // Ubah dari 20 menjadi jumlah yang sesuai untuk 5 jam data (20 poin x 15 menit)
-            if (chart.data.labels.length > 20) {  // Tetap 20 poin untuk tampilan
+            if (chart.data.labels.length > 20) {
                 chart.data.labels.shift();
                 chart.data.datasets.forEach((dataset) => {
                     dataset.data.shift();
@@ -829,29 +810,6 @@
             }
             lightLevelMarker.style.left = position + "%";
         }
-
-        // MODIFIKASI 5: Fungsi untuk menghitung waktu update selanjutnya
-        function updateNextUpdateTime() {
-            if (lastChartUpdate === 0) {
-                nextUpdateElement.textContent = "First load";
-                return;
-            }
-            
-            const nextUpdate = lastChartUpdate + CHART_UPDATE_INTERVAL;
-            const now = Date.now();
-            const timeLeft = nextUpdate - now;
-            
-            if (timeLeft <= 0) {
-                nextUpdateElement.textContent = "Ready to update";
-            } else {
-                const minutes = Math.floor(timeLeft / 60000);
-                const seconds = Math.floor((timeLeft % 60000) / 1000);
-                nextUpdateElement.textContent = `${minutes}m ${seconds}s`;
-            }
-        }
-
-        // MODIFIKASI 6: Update timer setiap detik
-        setInterval(updateNextUpdateTime, 1000);
         
         // Event listeners for controls
         modeToggle.addEventListener('change', function() {
@@ -904,167 +862,251 @@
             });
         });
         
-        // MODIFIKASI 3: Fungsi untuk menentukan apakah perlu update chart
-        function shouldUpdateChart() {
-            const now = Date.now();
-            if (lastChartUpdate === 0) {
-                lastChartUpdate = now;
-                return true;
-            }
-            
-            if (now - lastChartUpdate >= CHART_UPDATE_INTERVAL) {
-                lastChartUpdate = now;
-                return true;
-            }
-            
-            return false;
-        }
-        
-        // MODIFIKASI 4: Listen to Firebase data dengan kondisi update chart
-        solarTrackerRef.on('value', (snapshot) => {
-            const data = snapshot.val();
-            
-            if (data) {
-                // Update connection status
-                connectionDot.className = 'dot connected';
+        // Listen for connection state changes
+        const connectedRef = firebase.database().ref('.info/connected');
+        connectedRef.on('value', (snap) => {
+            if (snap.val() === true) {
+                connectionDot.classList.remove('disconnected');
+                connectionDot.classList.add('connected');
                 connectionStatus.textContent = 'Connected';
-                
-                // Update sensors data
-                if (data.sensors) {
-                    const sensors = data.sensors;
-                    
-                    // Update LDR visualization
-                    if (sensors.ldr) {
-                        updateLdrVisual(
-                            sensors.ldr.top || 0,
-                            sensors.ldr.right || 0,
-                            sensors.ldr.bottom || 0,
-                            sensors.ldr.left || 0
-                        );
-                    }
-                    
-                    // Update environment data
-                    if (sensors.dht) {
-                        temperature.textContent = (sensors.dht.temperature || 0).toFixed(1);
-                        humidity.textContent = (sensors.dht.humidity || 0).toFixed(1);
-                    }
-                    
-                    // Update light intensity
-                    if (sensors.light_lux !== undefined) {
-                        const luxValue = sensors.light_lux;
-                        lightLux.textContent = luxValue.toFixed(0);
-                        lightCategory.textContent = getLightCategory(luxValue);
-                        updateLightMarker(luxValue);
-                    }
-                    
-                    // Update INA219 data
-                    if (sensors.ina219_1) {
-                        ina1Voltage.textContent = (sensors.ina219_1.voltage || 0).toFixed(2);
-                        ina1Current.textContent = (sensors.ina219_1.current || 0).toFixed(1);
-                        ina1Power.textContent = (sensors.ina219_1.power || 0).toFixed(1);
-                    }
-                    
-                    if (sensors.ina219_2) {
-                        ina2Voltage.textContent = (sensors.ina219_2.voltage || 0).toFixed(2);
-                        ina2Current.textContent = (sensors.ina219_2.current || 0).toFixed(1);
-                        ina2Power.textContent = (sensors.ina219_2.power || 0).toFixed(1);
-                    }
-                    
-                    // MODIFIKASI 7: Update chart hanya setiap 15 menit
-                    if (shouldUpdateChart()) {
-                        const now = new Date();
-                        const timeLabel = now.getHours().toString().padStart(2, '0') + ':' + 
-                                        now.getMinutes().toString().padStart(2, '0');
-                        
-                        // Add data to charts
-                        if (sensors.ina219_2 && sensors.ina219_2.power) {
-                            addDataPoint(powerChart, timeLabel, sensors.ina219_2.power);
-                        }
-                        
-                        if (sensors.light_lux !== undefined) {
-                            addDataPoint(lightChart, timeLabel, sensors.light_lux);
-                        }
-                        
-                        if (sensors.dht) {
-                            addDataPoint(tempChart, timeLabel, sensors.dht.temperature, 0);
-                            addDataPoint(tempChart, timeLabel, sensors.dht.humidity, 1);
-                        }
-                    }
-                }
-                
-                // Update servo positions
-                if (data.servo) {
-                    const servoX = data.servo.x || 90;
-                    const servoY = data.servo.y || 90;
-                    
-                    servoXSlider.value = servoX;
-                    servoYSlider.value = servoY;
-                    servoXValue.textContent = servoX;
-                    servoYValue.textContent = servoY;
-                    
-                    panelPosition.innerHTML = `X: ${servoX}<br>Y: ${servoY}`;
-                }
-                
-                // Update settings
-                if (data.settings) {
-                    modeToggle.checked = data.settings.auto_mode || false;
-                    servoXSlider.disabled = data.settings.auto_mode || false;
-                    servoYSlider.disabled = data.settings.auto_mode || false;
-                }
-                
             } else {
-                // Update connection status to disconnected
-                connectionDot.className = 'dot disconnected';
+                connectionDot.classList.remove('connected');
+                connectionDot.classList.add('disconnected');
                 connectionStatus.textContent = 'Disconnected';
             }
         });
         
-        // Handle connection errors
-        solarTrackerRef.on('error', (error) => {
-            console.error('Firebase connection error:', error);
-            connectionDot.className = 'dot disconnected';
-            connectionStatus.textContent = 'Connection Error';
-        });
-        
-        // Initialize default values on page load
-        window.addEventListener('load', function() {
-            // Set initial chart update time
-            lastChartUpdate = Date.now();
-            
-            // Initialize with default settings if no data exists
-            setTimeout(() => {
-                solarTrackerRef.child('settings').once('value', (snapshot) => {
-                    if (!snapshot.exists()) {
-                        solarTrackerRef.child('settings').set({
-                            auto_mode: true,
-                            manual_x: 90,
-                            manual_y: 90
-                        });
-                    }
-                });
-            }, 1000);
-        });
-        
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', function() {
-            solarTrackerRef.off();
-        });
-        
-        // Add periodic cleanup for old chart data (optional)
-        setInterval(() => {
-            // Clean up chart data if it gets too large
-            [powerChart, lightChart, tempChart].forEach(chart => {
-                if (chart.data.labels.length > 50) {
-                    // Keep only last 30 points
-                    chart.data.labels = chart.data.labels.slice(-30);
-                    chart.data.datasets.forEach(dataset => {
-                        dataset.data = dataset.data.slice(-30);
-                    });
-                    chart.update();
+        // Listen for data updates from Firebase
+        solarTrackerRef.child('data').on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                console.log("Received data from Firebase:", data);
+                
+                // Update LDR values
+                if (data.ldr_top !== undefined && data.ldr_right !== undefined && 
+                    data.ldr_bottom !== undefined && data.ldr_left !== undefined) {
+                    updateLdrVisual(data.ldr_top, data.ldr_right, data.ldr_bottom, data.ldr_left);
                 }
-            });
-        }, 5 * 60 * 1000); // Every 5 minutes
+                
+                // Update panel position
+                if (data.servo_x !== undefined && data.servo_y !== undefined) {
+                    panelPosition.innerHTML = `X: ${data.servo_x}<br>Y: ${data.servo_y}`;
+                }
+                
+                // Update environmental data
+                if (data.temperature !== undefined) {
+                    temperature.textContent = data.temperature.toFixed(1);
+                }
+                if (data.humidity !== undefined) {
+                    humidity.textContent = data.humidity.toFixed(1);
+                }
+                
+                // Update light data (BH1750 sensor)
+                const luxValue = data.light_lux || 0;
+                lightLux.textContent = luxValue.toFixed(1);
+                lightCategory.textContent = getLightCategory(luxValue);
+                updateLightMarker(luxValue);
+                
+                //update ina219
+                if (data.voltage_1 !== undefined) {
+                    ina1Voltage.textContent = data.voltage_1.toFixed(2);
+                }
+                if (data.voltage_2 !== undefined) {
+                    ina2Voltage.textContent = data.voltage_2.toFixed(2);
+                }
+                if (data.current_ma_1 !== undefined) {
+                    ina1Current.textContent = data.current_ma_1.toFixed(2);
+                }
+                if (data.current_ma_2 !== undefined) {
+                    ina2Current.textContent = data.current_ma_2.toFixed(2);
+                }
+                if (data.power_mw_1 !== undefined) {
+                    ina1Power.textContent = data.power_mw_1.toFixed(2);
+                }
+                if (data.power_mw_2 !== undefined) {
+                    ina2Power.textContent = data.power_mw_2.toFixed(2);
+                }
+                
+                // Update servo position sliders (but don't trigger events)
+               // Update servo position sliders (but don't trigger events)
+                if (data.servo_x !== undefined && !servoXSlider.disabled) {
+                    servoXSlider.value = data.servo_x;
+                    servoXValue.textContent = data.servo_x;
+                }
+                if (data.servo_y !== undefined && !servoYSlider.disabled) {
+                    servoYSlider.value = data.servo_y;
+                    servoYValue.textContent = data.servo_y;
+                }
+                
+                // Add data points to charts
+                const now = new Date();
+                const timeLabel = now.getHours().toString().padStart(2, '0') + ':' + 
+                                now.getMinutes().toString().padStart(2, '0') + ':' + 
+                                now.getSeconds().toString().padStart(2, '0');
+                
+                const powerValue = data.power_mw_1 || data.power_mw_2 || 0;
+                if (powerValue > 0) {
+                    addDataPoint(powerChart, timeLabel, powerValue);
+                }
+                if (data.light_lux !== undefined) {
+                    addDataPoint(lightChart, timeLabel, data.light_lux);
+                }
+                if (data.temperature !== undefined) {
+                    addDataPoint(tempChart, timeLabel, data.temperature);
+                }
+                if (data.humidity !== undefined) {
+                    addDataPoint(tempChart, timeLabel, data.humidity, 1);
+                }
+            }
+        });
         
+        // Listen for settings updates from Firebase
+        solarTrackerRef.child('settings').on('value', (snapshot) => {
+            const settings = snapshot.val();
+            if (settings) {
+                console.log("Received settings from Firebase:", settings);
+                
+                // Update auto mode toggle
+                if (settings.auto_mode !== undefined) {
+                    modeToggle.checked = settings.auto_mode;
+                    servoXSlider.disabled = settings.auto_mode;
+                    servoYSlider.disabled = settings.auto_mode;
+                }
+                
+                // Update manual settings
+                if (settings.manual_x !== undefined && !servoXSlider.disabled) {
+                    servoXSlider.value = settings.manual_x;
+                    servoXValue.textContent = settings.manual_x;
+                }
+                if (settings.manual_y !== undefined && !servoYSlider.disabled) {
+                    servoYSlider.value = settings.manual_y;
+                    servoYValue.textContent = settings.manual_y;
+                }
+            }
+        });
+        
+        // Initialize settings - default values
+        solarTrackerRef.child('settings').once('value', (snapshot) => {
+            if (!snapshot.exists()) {
+                solarTrackerRef.child('settings').set({
+                    auto_mode: true,
+                    manual_x: 100,
+                    manual_y: 90
+                });
+            }
+        });
+// Simulate data updates for development testing
+        function simulateData() {
+            // Only simulate if not connected to real data
+            if (connectionDot.classList.contains('disconnected')) {
+                const time = new Date();
+                
+                // Simulate light based on time of day (simple day/night cycle)
+                const hour = time.getHours();
+                const lightLevel = (hour >= 6 && hour <= 18) 
+                    ? 10000 * Math.sin(((hour - 6) / 12) * Math.PI) 
+                    : Math.random() * 10; // Night time
+                
+                // Temperature with some variance based on light level
+                const baseTemp = 20 + (lightLevel > 1000 ? 5 : 0);
+                const temperature = baseTemp + (Math.random() * 2 - 1);
+                
+                // Humidity inverse to temperature with randomness
+                const humidity = 60 - (temperature - 20) * 2 + (Math.random() * 10 - 5);
+                
+                // LDR values with variances simulating sun position
+                const baseLdr = Math.min(lightLevel, 4000);
+                const ldrVariance = baseLdr * 0.3;
+                
+                // Simulated voltage and current based on light level
+                const voltage = 3 + (lightLevel / 20000); // 3-3.5V
+                const current = Math.min(200, lightLevel / 50); // 0-200mA
+                const power = voltage * current;
+                
+                // Panel position tracking the simulated light source
+                let servoX = 90;
+                let servoY = 90;
+                
+                if (lightLevel > 100) {
+                    // Simulate sun position
+                    servoX = 50 + Math.floor((hour - 6) * (130 - 50) / 12);
+                    if (servoX < 50) servoX = 50;
+                    if (servoX > 130) servoX = 130;
+                    
+                    servoY = 90 - Math.floor(20 * Math.sin((hour - 12) * Math.PI / 12));
+                }
+                
+                // Create a simulated data object
+                const simulatedData = {
+                    temperature: temperature,
+                    humidity: humidity,
+                    light_lux: lightLevel,
+                    voltage: voltage,
+                    current_ma: current,
+                    power_mw: power,
+                    ldr_top: Math.floor(baseLdr + (Math.random() * ldrVariance) - (servoY < 90 ? 0 : ldrVariance)),
+                    ldr_right: Math.floor(baseLdr + (Math.random() * ldrVariance) - (servoX > 90 ? 0 : ldrVariance)),
+                    ldr_bottom: Math.floor(baseLdr + (Math.random() * ldrVariance) - (servoY > 90 ? 0 : ldrVariance)),
+                    ldr_left: Math.floor(baseLdr + (Math.random() * ldrVariance) - (servoX < 90 ? 0 : ldrVariance)),
+                    servo_x: servoX,
+                    servo_y: servoY
+                };
+                
+                // Update the UI with simulated data
+                const now = new Date();
+                const timeLabel = now.getHours().toString().padStart(2, '0') + ':' + 
+                                now.getMinutes().toString().padStart(2, '0') + ':' + 
+                                now.getSeconds().toString().padStart(2, '0');
+                
+                // Update LDR visualization
+                updateLdrVisual(
+                    simulatedData.ldr_top, 
+                    simulatedData.ldr_right, 
+                    simulatedData.ldr_bottom, 
+                    simulatedData.ldr_left
+                );
+                
+                // Update panel position
+                panelPosition.innerHTML = `X: ${simulatedData.servo_x}<br>Y: ${simulatedData.servo_y}`;
+                
+                // Update environmental data
+                temperature.textContent = simulatedData.temperature.toFixed(1);
+                humidity.textContent = simulatedData.humidity.toFixed(1);
+                
+                // Update light data
+                lightLux.textContent = simulatedData.light_lux.toFixed(1);
+                lightCategory.textContent = getLightCategory(simulatedData.light_lux);
+                updateLightMarker(simulatedData.light_lux);
+                
+                // Update power metrics
+                voltage.textContent = simulatedData.voltage.toFixed(2);
+                current.textContent = simulatedData.current_ma.toFixed(2);
+                power.textContent = simulatedData.power_mw.toFixed(2);
+                
+                // Calculate and update efficiency
+                const effValue = calculateEfficiency(
+                    simulatedData.power_mw, 
+                    simulatedData.light_lux
+                );
+                efficiency.textContent = effValue;
+                
+                // Add data points to charts
+                addDataPoint(powerChart, timeLabel, simulatedData.power_mw);
+                addDataPoint(lightChart, timeLabel, simulatedData.light_lux);
+                addDataPoint(tempChart, timeLabel, simulatedData.temperature);
+                addDataPoint(tempChart, timeLabel, simulatedData.humidity, 1);
+            }
+        }
+        
+        // Run simulator every 3 seconds
+        setInterval(simulateData, 3000);
+        
+        // Initialize the UI with auto mode
+        modeToggle.checked = true;
+        servoXSlider.disabled = true;
+        servoYSlider.disabled = true;
+        
+        console.log("Dashboard initialized successfully");
     </script>
 </body>
 </html>
