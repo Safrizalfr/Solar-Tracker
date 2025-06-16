@@ -206,30 +206,6 @@
             margin-top: 20px;
         }
 
-        .chart-controls {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .chart-controls select {
-            padding: 8px 12px;
-            border: 1px solid #ced4da;
-            border-radius: 5px;
-            background: white;
-            font-size: 14px;
-        }
-
-        .chart-info {
-            font-size: 0.9em;
-            color: #6c757d;
-            text-align: center;
-            margin-top: 10px;
-        }
-
         .control-panel {
             background: white;
             border-radius: 15px;
@@ -454,22 +430,9 @@
                         <div class="metric-value power-metric" id="power2">-</div>
                     </div>
                 </div>
-                <div class="chart-controls">
-                    <div>
-                        <label>Time Range: </label>
-                        <select id="powerTimeRange" onchange="changePowerTimeRange()">
-                            <option value="realtime">Real-time (20 points)</option>
-                            <option value="1hour">Last Hour</option>
-                            <option value="6hours">Last 6 Hours</option>
-                            <option value="24hours" selected>Last 24 Hours</option>
-                            <option value="7days">Last 7 Days</option>
-                        </select>
-                    </div>
-                </div>
                 <div class="chart-container">
                     <canvas id="powerChart"></canvas>
                 </div>
-                <div class="chart-info" id="powerChartInfo">Showing hourly averages for the last 24 hours</div>
             </div>
 
             <div class="card">
@@ -488,22 +451,9 @@
                         <div class="metric-value environment-metric" id="lightLux">-</div>
                     </div>
                 </div>
-                <div class="chart-controls">
-                    <div>
-                        <label>Time Range: </label>
-                        <select id="envTimeRange" onchange="changeEnvTimeRange()">
-                            <option value="realtime">Real-time (20 points)</option>
-                            <option value="1hour">Last Hour</option>
-                            <option value="6hours">Last 6 Hours</option>
-                            <option value="24hours" selected>Last 24 Hours</option>
-                            <option value="7days">Last 7 Days</option>
-                        </select>
-                    </div>
-                </div>
                 <div class="chart-container">
                     <canvas id="environmentChart"></canvas>
                 </div>
-                <div class="chart-info" id="envChartInfo">Showing hourly averages for the last 24 hours</div>
             </div>
         </div>
 
@@ -606,14 +556,6 @@
         let environmentData = [];
         let lastUpdateTimestamp = 0;
         let esp32OnlineStatus = false;
-        let powerTimeRange = '24hours';
-        let envTimeRange = '24hours';
-
-        // Historical data storage
-        let historicalData = {
-            power: [],
-            environment: []
-        };
 
         // Initialize charts
         function initCharts() {
@@ -630,9 +572,7 @@
                             borderColor: '#e74c3c',
                             backgroundColor: 'rgba(231, 76, 60, 0.1)',
                             fill: true,
-                            tension: 0.4,
-                            pointRadius: 3,
-                            pointHoverRadius: 6
+                            tension: 0.4
                         },
                         {
                             label: 'Power Consumption (mW)',
@@ -640,9 +580,7 @@
                             borderColor: '#f39c12',
                             backgroundColor: 'rgba(243, 156, 18, 0.1)',
                             fill: true,
-                            tension: 0.4,
-                            pointRadius: 3,
-                            pointHoverRadius: 6
+                            tension: 0.4
                         }
                     ]
                 },
@@ -652,10 +590,6 @@
                     plugins: {
                         legend: {
                             position: 'top',
-                        },
-                        tooltip: {
-                            mode: 'index',
-                            intersect: false,
                         }
                     },
                     scales: {
@@ -672,11 +606,6 @@
                                 text: 'Time'
                             }
                         }
-                    },
-                    interaction: {
-                        mode: 'nearest',
-                        axis: 'x',
-                        intersect: false
                     }
                 }
             });
@@ -694,9 +623,7 @@
                             borderColor: '#e74c3c',
                             backgroundColor: 'rgba(231, 76, 60, 0.1)',
                             yAxisID: 'y',
-                            tension: 0.4,
-                            pointRadius: 3,
-                            pointHoverRadius: 6
+                            tension: 0.4
                         },
                         {
                             label: 'Humidity (%)',
@@ -704,19 +631,7 @@
                             borderColor: '#3498db',
                             backgroundColor: 'rgba(52, 152, 219, 0.1)',
                             yAxisID: 'y1',
-                            tension: 0.4,
-                            pointRadius: 3,
-                            pointHoverRadius: 6
-                        },
-                        {
-                            label: 'Light (lux)',
-                            data: [],
-                            borderColor: '#f39c12',
-                            backgroundColor: 'rgba(243, 156, 18, 0.1)',
-                            yAxisID: 'y2',
-                            tension: 0.4,
-                            pointRadius: 3,
-                            pointHoverRadius: 6
+                            tension: 0.4
                         }
                     ]
                 },
@@ -726,10 +641,6 @@
                     plugins: {
                         legend: {
                             position: 'top',
-                        },
-                        tooltip: {
-                            mode: 'index',
-                            intersect: false,
                         }
                     },
                     scales: {
@@ -753,148 +664,168 @@
                             grid: {
                                 drawOnChartArea: false,
                             },
-                        },
-                        y2: {
-                            type: 'linear',
-                            display: false,
-                            position: 'right'
-                        },
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Time'
-                            }
                         }
-                    },
-                    interaction: {
-                        mode: 'nearest',
-                        axis: 'x',
-                        intersect: false
                     }
                 }
             });
         }
 
-        // Generate hourly data for different time ranges
-        function generateHourlyData(timeRange) {
-            const now = new Date();
-            const data = [];
-            let hours, interval, format;
+        // Update status indicators
+        function updateStatusIndicators(data) {
+            const currentTime = Date.now();
+            const dataTime = new Date(data.timestamp || currentTime);
+            const timeDiff = currentTime - dataTime.getTime();
 
-            switch(timeRange) {
-                case 'realtime':
-                    // Keep existing real-time behavior
-                    return null;
-                case '1hour':
-                    hours = 1;
-                    interval = 5; // 5-minute intervals
-                    format = 'HH:mm';
-                    break;
-                case '6hours':
-                    hours = 6;
-                    interval = 30; // 30-minute intervals
-                    format = 'HH:mm';
-                    break;
-                case '24hours':
-                    hours = 24;
-                    interval = 60; // 1-hour intervals
-                    format = 'HH:00';
-                    break;
-                case '7days':
-                    hours = 168; // 7 * 24
-                    interval = 360; // 6-hour intervals
-                    format = 'DD/MM HH:00';
-                    break;
-                default:
-                    hours = 24;
-                    interval = 60;
-                    format = 'HH:00';
-            }
-
-            const totalPoints = Math.floor((hours * 60) / interval);
+            // ESP32 Status (online if data is less than 15 seconds old)
+            const esp32Status = document.getElementById('esp32Status');
+            const esp32StatusText = document.getElementById('esp32StatusText');
+            const esp32Dot = esp32Status.querySelector('.status-dot');
             
-            for (let i = totalPoints - 1; i >= 0; i--) {
-                const time = new Date(now.getTime() - (i * interval * 60000));
-                const timeLabel = formatTime(time, format);
-                
-                // Generate realistic sample data based on time of day
-                const hour = time.getHours();
-                const dayProgress = Math.sin((hour - 6) * Math.PI / 12); // Peak at noon
-                const sunlight = Math.max(0, dayProgress);
-                
-                data.push({
-                    time: timeLabel,
-                    timestamp: time.getTime(),
-                    powerGenerated: sunlight * (800 + Math.random() * 400), // 0-1200mW
-                    powerConsumption: 150 + Math.random() * 100, // 150-250mW
-                    temperature: 25 + sunlight * 15 + (Math.random() - 0.5) * 5, // 20-45°C
-                    humidity: 60 - sunlight * 20 + (Math.random() - 0.5) * 10, // 40-80%
-                    lightLux: sunlight * (8000 + Math.random() * 2000) // 0-10000 lux
-                });
-            }
-
-            return data;
-        }
-
-        function formatTime(date, format) {
-            const pad = (n) => n.toString().padStart(2, '0');
-            
-            switch(format) {
-                case 'HH:mm':
-                    return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-                case 'HH:00':
-                    return `${pad(date.getHours())}:00`;
-                case 'DD/MM HH:00':
-                    return `${pad(date.getDate())}/${pad(date.getMonth() + 1)} ${pad(date.getHours())}:00`;
-                default:
-                    return date.toLocaleTimeString();
-            }
-        }
-
-        // Update charts with time range selection
-        function updateChartsWithTimeRange(chartType, timeRange) {
-            const chart = chartType === 'power' ? powerChart : environmentChart;
-            const infoElement = document.getElementById(chartType + 'ChartInfo');
-            
-            if (timeRange === 'realtime') {
-                // Keep existing real-time behavior
-                infoElement.textContent = 'Showing real-time data (last 20 points)';
-                return;
-            }
-
-            const data = generateHourlyData(timeRange);
-            if (!data) return;
-
-            // Update chart data
-            chart.data.labels = data.map(d => d.time);
-            
-            if (chartType === 'power') {
-                chart.data.datasets[0].data = data.map(d => d.powerGenerated);
-                chart.data.datasets[1].data = data.map(d => d.powerConsumption);
-                infoElement.textContent = `Showing data for the last ${timeRange}`;
+            if (timeDiff < 15000) { // 15 seconds
+                esp32OnlineStatus = true;
+                esp32Status.className = 'status-indicator online';
+                esp32StatusText.textContent = 'Online';
+                esp32Dot.className = 'status-dot online';
             } else {
-                chart.data.datasets[0].data = data.map(d => d.temperature);
-                chart.data.datasets[1].data = data.map(d => d.humidity);
-                chart.data.datasets[2].data = data.map(d => d.lightLux);
-                infoElement.textContent = `Showing data for the last ${timeRange}`;
+                esp32OnlineStatus = false;
+                esp32Status.className = 'status-indicator offline';
+                esp32StatusText.textContent = 'Offline';
+                esp32Dot.className = 'status-dot offline';
             }
 
-            chart.update();
+            // WiFi Status
+            const wifiStatus = document.getElementById('wifiStatus');
+            const wifiStatusText = document.getElementById('wifiStatusText');
+            const wifiDot = wifiStatus.querySelector('.status-dot');
+            
+            if (esp32OnlineStatus) {
+                wifiStatus.className = 'status-indicator online';
+                wifiStatusText.textContent = 'Connected';
+                wifiDot.className = 'status-dot online';
+            } else {
+                wifiStatus.className = 'status-indicator offline';
+                wifiStatusText.textContent = 'Disconnected';
+                wifiDot.className = 'status-dot offline';
+            }
+
+            // Time Sync Status
+            const timeSyncStatus = document.getElementById('timeSyncStatus');
+            const timeSyncStatusText = document.getElementById('timeSyncStatusText');
+            const timeSyncDot = timeSyncStatus.querySelector('.status-dot');
+            
+            if (data.time_synced) {
+                timeSyncStatus.className = 'status-indicator online';
+                timeSyncStatusText.textContent = 'Synced';
+                timeSyncDot.className = 'status-dot online';
+            } else {
+                timeSyncStatus.className = 'status-indicator warning';
+                timeSyncStatusText.textContent = 'Not Synced';
+                timeSyncDot.className = 'status-dot warning';
+            }
+
+            // SD Card Status
+            const sdCardStatus = document.getElementById('sdCardStatus');
+            const sdCardStatusText = document.getElementById('sdCardStatusText');
+            const sdCardDot = sdCardStatus.querySelector('.status-dot');
+            
+            if (data.sd_card_status) {
+                sdCardStatus.className = 'status-indicator online';
+                sdCardStatusText.textContent = 'OK';
+                sdCardDot.className = 'status-dot online';
+            } else {
+                sdCardStatus.className = 'status-indicator offline';
+                sdCardStatusText.textContent = 'Failed';
+                sdCardDot.className = 'status-dot offline';
+            }
+
+            // Sampling Progress
+            const samplingProgress = data.sampling_progress || 0;
+            document.getElementById('samplingProgress').textContent = samplingProgress + '%';
+            document.getElementById('samplingProgressBar').style.width = samplingProgress + '%';
         }
 
-        // Change power time range
-        function changePowerTimeRange() {
-            const selectedRange = document.getElementById('powerTimeRange').value;
-            updateChartsWithTimeRange('power', selectedRange);
+        // Update sensor data
+        function updateSensorData(data) {
+            // Power monitoring
+            document.getElementById('voltage1').textContent = (data.voltage_1 || 0).toFixed(2) + 'V';
+            document.getElementById('current1').textContent = (data.current_ma_1 || 0).toFixed(1) + 'mA';
+            document.getElementById('power1').textContent = (data.power_mw_1 || 0).toFixed(1) + 'mW';
+            document.getElementById('voltage2').textContent = (data.voltage_2 || 0).toFixed(2) + 'V';
+            document.getElementById('current2').textContent = (data.current_ma_2 || 0).toFixed(1) + 'mA';
+            document.getElementById('power2').textContent = (data.power_mw_2 || 0).toFixed(1) + 'mW';
+
+            // Environmental data
+            document.getElementById('temperature').textContent = (data.temperature || 0).toFixed(1) + '°C';
+            document.getElementById('humidity').textContent = (data.humidity || 0).toFixed(1) + '%';
+            document.getElementById('lightLux').textContent = (data.light_lux || 0).toFixed(0) + ' lux';
+
+            // Tracking data
+            document.getElementById('trackingMode').textContent = data.auto_mode ? 'AUTO' : 'MANUAL';
+            document.getElementById('ldrLeft').textContent = data.ldr_left || 0;
+            document.getElementById('ldrRight').textContent = data.ldr_right || 0;
+            document.getElementById('ldrTop').textContent = data.ldr_top || 0;
+            document.getElementById('ldrBottom').textContent = data.ldr_bottom || 0;
+            document.getElementById('servoX').textContent = (data.servo_x || 90) + '°';
+            document.getElementById('servoY').textContent = (data.servo_y || 90) + '°';
+
+            // Update timestamps
+            document.getElementById('lastDataTime').textContent = data.timestamp || 'Unknown';
+            document.getElementById('lastUpdateTime').textContent = new Date().toLocaleTimeString();
         }
 
-        // Change environmental time range
-        function changeEnvTimeRange() {
-            const selectedRange = document.getElementById('envTimeRange').value;
-            updateChartsWithTimeRange('environment', selectedRange);
+        // Update charts
+        function updateCharts(data) {
+            const currentTime = new Date().toLocaleTimeString();
+            
+            // Update power chart
+            if (powerChart.data.labels.length > 20) {
+                powerChart.data.labels.shift();
+                powerChart.data.datasets[0].data.shift();
+                powerChart.data.datasets[1].data.shift();
+            }
+            
+            powerChart.data.labels.push(currentTime);
+            powerChart.data.datasets[0].data.push(data.power_mw_2 || 0);
+            powerChart.data.datasets[1].data.push(data.power_mw_1 || 0);
+            powerChart.update('none');
+
+            // Update environment chart
+            if (environmentChart.data.labels.length > 20) {
+                environmentChart.data.labels.shift();
+                environmentChart.data.datasets[0].data.shift();
+                environmentChart.data.datasets[1].data.shift();
+            }
+            
+            environmentChart.data.labels.push(currentTime);
+            environmentChart.data.datasets[0].data.push(data.temperature || 0);
+            environmentChart.data.datasets[1].data.push(data.humidity || 0);
+            environmentChart.update('none');
         }
 
-        // Update status indicators and sensor data
+        // Control functions
+        function updateMode() {
+            const mode = document.getElementById('modeSelect').value === 'true';
+            database.ref('/solar_tracker/settings/auto_mode').set(mode);
+        }
+
+        function updateManualPosition() {
+            const x = parseInt(document.getElementById('manualX').value);
+            const y = parseInt(document.getElementById('manualY').value);
+            
+            database.ref('/solar_tracker/settings/manual_x').set(x);
+            database.ref('/solar_tracker/settings/manual_y').set(y);
+        }
+
+        // Manual control sliders
+        document.getElementById('manualX').addEventListener('input', function() {
+            document.getElementById('manualXValue').textContent = this.value + '°';
+        });
+
+        document.getElementById('manualY').addEventListener('input', function() {
+            document.getElementById('manualYValue').textContent = this.value + '°';
+        });
+
+        // Listen to Firebase data
         function startDataListener() {
             database.ref('/solar_tracker/data').on('value', (snapshot) => {
                 const data = snapshot.val();
